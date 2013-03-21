@@ -38,6 +38,7 @@ public class PluginMetadata {
     String name;
     int plugin_type;
     String jar;
+    String class_name;
     Set<String> compatible_versions;
     
     public String getPluginTypeName() {

@@ -26,12 +26,17 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 
 import org.apache.commons.io.FileUtils;
 
 import com.google.gson.Gson;
 
 public class LocalPluginSource implements IPluginSource {
+	
+	private final String META_NAME = "plugin.json";
+	
 	private File pluginFile;
 	public LocalPluginSource(File pluginFile){
 		this.pluginFile = pluginFile;
@@ -43,8 +48,12 @@ public class LocalPluginSource implements IPluginSource {
 			throw new PluginException("Plugin file " + pluginFile.getAbsolutePath() + " does not exist. ");
 		}
 		try{
-			URL url = new URL("jar:file:" + pluginFile.getAbsolutePath() + "!/plugin.json");
-			BufferedReader br = new BufferedReader(new InputStreamReader(url.openStream()));
+			if(!hasMetadata()){
+				throw new PluginException("Expected plugin.json manifest in given jar");
+			}
+			JarFile jar = new JarFile(pluginFile); // need to figure out a way to only make this and the entry once
+			JarEntry metaFile = jar.getJarEntry(META_NAME);
+			BufferedReader br = new BufferedReader(new InputStreamReader(jar.getInputStream(metaFile)));
 			PluginMetadata metadata = new Gson().fromJson(br, PluginMetadata.class);
 			br.close();
 			metadata.jar = pluginFile.toURI().toString();
@@ -65,5 +74,13 @@ public class LocalPluginSource implements IPluginSource {
 			throw new PluginException();
 		}
 	}
-
+	
+	public boolean hasMetadata(){
+		try{
+			JarFile jar = new JarFile(pluginFile);
+			return jar.getJarEntry(META_NAME) != null;
+		}catch(IOException e){
+			return false;
+		}
+	}
 }

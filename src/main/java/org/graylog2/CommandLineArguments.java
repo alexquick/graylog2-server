@@ -41,6 +41,9 @@ public class CommandLineArguments {
     @Parameter(names = {"-x", "--install-plugin"}, description = "Install plugin with provided short name from graylog2.org")
     private String pluginShortname;
     
+    @Parameter(names = "--plugin-file", description = "Install plugin contained in given jar")
+    private String pluginFile;
+    
     @Parameter(names = {"-v", "--plugin-version"}, description = "Install plugin with this version")
     private String pluginVersion = Core.GRAYLOG2_VERSION;
 
@@ -122,11 +125,15 @@ public class CommandLineArguments {
     }
     
     public boolean isInstallPlugin() {
-        return pluginShortname != null && !pluginShortname.isEmpty();
+        return pluginShortname != null && !pluginShortname.isEmpty() && pluginFile != null && !pluginFile.isEmpty();
     }
     
     public String getPluginShortname() {
         return pluginShortname;
+    }
+    
+    public String getPluginFile() {
+        return pluginFile;
     }
     
     public String getPluginVersion() {

@@ -50,35 +50,23 @@ public class PluginInstaller {
     
     // seed mongodb
     // ask user to configure plugin and restart graylog2-server
-    
-    private final static String API_TARGET = "http://plugins.graylog2.org/plugin";
-    
-    private final String shortname;
-    private final String version;
+
     private final boolean force;
     private final Configuration configuration;
     
-    /*
-     * those are set in getRequestedConfiguration which is a bit unfortunate,
-     * because they cannot be built explicitly and are only set when 
-     * getRequestedConfiguration has been called. something for a second iteration.
-     */
-    private String pluginClassName;
-    private String pluginName;
-    
     private MongoBridge mongoBridge;
+	private IPluginSource source;
     
-    public PluginInstaller(String shortname, String version, Configuration configuration, boolean force) {
-        this.shortname = shortname;
-        this.version = version;
+    public PluginInstaller(IPluginSource source, Configuration configuration, boolean force) {
         this.configuration = configuration;
         this.force = force;
+        this.source = source;
     }
     
     public void install() {
         connectMongo();
         
-        System.out.println("Attempting to install plugin <" + shortname + "> version <" + version + ">.");
+        System.out.println("Attempting to install plugin <" + source.toString() + ">");
         
         if (force) {
             System.out.println("In force mode. Even installing if not officially"
@@ -86,7 +74,7 @@ public class PluginInstaller {
         }
         
         try {
-            PluginApiResponse pluginInformation = getPluginInformation();
+            PluginMetadata pluginInformation = source.getPluginInformation();
 
             System.out.println("Got plugin information from API.");
 
@@ -96,17 +84,18 @@ public class PluginInstaller {
                 return;
             }
             
-            System.out.println("Downloading JAR: " + pluginInformation.jar);
-            downloadAndCopyJar(pluginInformation.jar, pluginInformation.getPluginTypeName());
-            String jarPath = jarPath(pluginInformation.jar, pluginInformation.getPluginTypeName());
-            System.out.println("Copied JAR to " + jarPath);
+            System.out.println("Fetching JAR: " + pluginInformation.jar);
+            File jarFile = new File(jarPath(pluginInformation, pluginInformation.getPluginTypeName()));
+            source.fetchJar(pluginInformation, jarFile);
+            System.out.println("Copied JAR to " + jarFile.getAbsolutePath());
             
-            Map<String, String> config = getRequestedConfiguration(jarPath, pluginInformation.getClassOfPlugin());
+            LoadedPlugin plugin = loadPlugin(jarFile, pluginInformation.getClassOfPlugin());
+            Map<String, String> config = plugin.configuration;
             
             System.out.println("Requested configuration: " + config);
             
             mongoBridge.writeSinglePluginInformation(
-                    PluginRegistry.buildStandardInformation(pluginClassName, pluginName, config),
+                    PluginRegistry.buildStandardInformation(pluginInformation.shortname, pluginInformation.name, config),
                     pluginInformation.getRegistryName()
             );
             
@@ -117,71 +106,6 @@ public class PluginInstaller {
         }
     }
     
-    private PluginApiResponse getPluginInformation() throws Exception {
-        PluginApiResponse result;
-        
-        HttpURLConnection connection = null;
-
-        try {
-            URL endpoint = new URL(buildUrl());
-            connection = (HttpURLConnection) endpoint.openConnection();
-
-            connection.setRequestMethod("GET");
-
-            connection.setUseCaches(false);
-            connection.setDoInput(true);
-            connection.setDoOutput(true);
-
-            connection.setConnectTimeout(2000);
-            connection.setReadTimeout(2000);
-
-            if (connection.getResponseCode() != HttpURLConnection.HTTP_OK) {
-                throw new RuntimeException("Got HTTP response code "
-                        + connection.getResponseCode() + " "
-                        + connection.getResponseMessage() + ". Expected HTTP 200.");
-            }
-            
-            BufferedReader rd = new BufferedReader(
-                    new InputStreamReader(connection.getInputStream())
-            );
-            
-            result = new Gson().fromJson(rd.readLine(), PluginApiResponse.class);
-        } finally {
-            // Make sure to close connection.
-            if(connection != null) {
-                connection.disconnect();
-            }
-        }
-        
-        return result;
-    }
-    
-    private void downloadAndCopyJar(String url, String pluginType) throws Exception {        
-        int startTime = Tools.getUTCTimestamp();
-
-        URL jar = new URL(url);
-        jar.openConnection();
-        InputStream reader = jar.openStream();
-
-        FileOutputStream writer = new FileOutputStream(jarPath(url, pluginType));
-        byte[] buffer = new byte[153600];
-        int totalBytesRead = 0;
-        int bytesRead = 0;
-
-        while ((bytesRead = reader.read(buffer)) > 0) {  
-            writer.write(buffer, 0, bytesRead);
-            buffer = new byte[153600];
-            totalBytesRead += bytesRead;
-        }
-
-        long endTime = Tools.getUTCTimestamp();
-
-        System.out.println("Done. " + totalBytesRead + " bytes read "
-                + "(took " + (endTime - startTime) + "s).");
-        writer.close();
-        reader.close();
-    }
-    
     public static boolean compatible(Set<String> versions) {
         if (versions == null) {
             return false;
@@ -190,9 +114,9 @@ public class PluginInstaller {
         return versions.contains(Core.GRAYLOG2_VERSION);
     }
     
-    public static String jarPath(String jarUrl, String pluginType) {
+    public static String jarPath(PluginMetadata info, String jarUrl) {
         try {
-            String path = "plugin/" + pluginType + "/" + jarUrl.substring(jarUrl.lastIndexOf("/")+1);
+            String path = "plugin/" + info.getPluginTypeName() + "/" + jarUrl.substring(jarUrl.lastIndexOf("/")+1);
             
             // lol just to make sure...
             if (path.startsWith("/")) {
@@ -205,8 +129,7 @@ public class PluginInstaller {
         }
     }
     
-    public Map<String, String> getRequestedConfiguration(String jarPath, Class type) throws Exception {
-        File file = new File(jarPath);
+    public LoadedPlugin loadPlugin(File file, Class type) throws Exception {
 
         ClassLoader loader = URLClassLoader.newInstance(
             new URL[] { file.toURI().toURL() },
@@ -214,54 +137,41 @@ public class PluginInstaller {
         );
 
         Class<?> p = Class.forName(PluginLoader.getClassNameFromJarName(file.getName()), true, loader);
-        pluginClassName = p.getCanonicalName();
+        String className = p.getCanonicalName();
+        String name = "";
+        Map<String, String> configuration =  Maps.newHashMap();
         Object pluginObj = p.asSubclass(type).newInstance();
 
         // no shame, time for a second iteration!
         
         if (pluginObj instanceof Initializer) {
             Initializer plugin = (Initializer) pluginObj;
-            pluginName = plugin.getName();
-            return plugin.getRequestedConfiguration();
-        }
-        
-        if (pluginObj instanceof MessageInput) {
+           name = plugin.getName();
+           configuration = plugin.getRequestedConfiguration();
+        }else if (pluginObj instanceof MessageInput) {
             MessageInput plugin = (MessageInput) pluginObj;
-            pluginName = plugin.getName();
-            return plugin.getRequestedConfiguration();
-        }
-
-        if (pluginObj instanceof MessageFilter) {
+            name = plugin.getName();
+            configuration = plugin.getRequestedConfiguration();
+        }else if (pluginObj instanceof MessageFilter) {
             MessageFilter plugin = (MessageFilter) pluginObj;
-            pluginName = plugin.getName();
-            
+            name = plugin.getName();
             // zomg filters have no config
-            return Maps.newHashMap();
-        }
-        
-        if (pluginObj instanceof MessageOutput) {
+        }else if (pluginObj instanceof MessageOutput) {
             MessageOutput plugin = (MessageOutput) pluginObj;
-            pluginName = plugin.getName();
-            return plugin.getRequestedConfiguration();
-        }
-        
-        if (pluginObj instanceof Transport) {
+            name = plugin.getName();
+            configuration = plugin.getRequestedConfiguration();
+        }else if (pluginObj instanceof Transport) {
             Transport plugin = (Transport) pluginObj;
-            pluginName = plugin.getName();
-            return plugin.getRequestedConfiguration();
-        }
-        
-        if (pluginObj instanceof AlarmCallback) {
+            name = plugin.getName();
+            configuration = plugin.getRequestedConfiguration();
+        }else if (pluginObj instanceof AlarmCallback) {
             AlarmCallback plugin = (AlarmCallback) pluginObj;
-            pluginName = plugin.getName();
-            return plugin.getRequestedConfiguration();
+            name = plugin.getName();
+            configuration = plugin.getRequestedConfiguration();
+        }else{
+        	throw new RuntimeException("Could not get requested configuration of plugin. Unknown type: " + p.getName() );
         }
-        
-        throw new RuntimeException("Could not get requested configuration of plugin.");
-    }
-    
-    private String buildUrl() {
-        return API_TARGET + "/" + shortname + "/" + version;
+        return new LoadedPlugin(name, className, configuration);
     }
     
     private void connectMongo() {
@@ -279,6 +189,27 @@ public class PluginInstaller {
         mongoBridge = new MongoBridge(null);
         mongoBridge.setConnection(mongoConnection);
         mongoConnection.connect();
+    }
+    
+    // come up with a better name for this guy or factor him out
+    private class LoadedPlugin{
+    	private String name;
+    	private String className;
+    	private Map<String, String> configuration;
+    	public LoadedPlugin(String name, String className, Map<String, String> configuration){
+    		this.name = name;
+    		this.className = className;
+    		this.configuration = configuration;
+    	}
+		public String getName() {
+			return name;
+		}
+		public String getClassName() {
+			return className;
+		}
+		public Map<String, String> getConfiguration() {
+			return configuration;
+		}
     }
     
 }

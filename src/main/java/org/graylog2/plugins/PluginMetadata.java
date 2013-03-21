@@ -19,6 +19,7 @@
  */
 package org.graylog2.plugins;
 
+import java.net.URL;
 import java.util.Set;
 import org.graylog2.plugin.alarms.callbacks.AlarmCallback;
 import org.graylog2.plugin.alarms.transports.Transport;
@@ -30,7 +31,7 @@ import org.graylog2.plugin.outputs.MessageOutput;
 /**
  * @author Lennart Koopmann <lennart@socketfeed.com>
  */
-public class PluginApiResponse {
+public class PluginMetadata {
     
     String shortname;
     String version;

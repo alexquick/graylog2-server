@@ -48,6 +48,8 @@ import java.io.FileWriter;
 import java.io.Writer;
 import org.graylog2.cluster.Cluster;
 import org.graylog2.plugin.initializers.InitializerConfigurationException;
+import org.graylog2.plugins.IPluginSource;
+import org.graylog2.plugins.LocalPluginSource;
 import org.graylog2.plugins.PluginInstaller;
 import org.graylog2.plugins.RemotePluginSource;
 
@@ -101,12 +103,16 @@ public final class Main {
         
         if (commandLineArguments.isInstallPlugin()) {
             System.out.println("Plugin installation requested.");
+            IPluginSource source = null;
+            if(commandLineArguments.isInstallLocalPlugin()){
+            	source = new LocalPluginSource(new File(commandLineArguments.getPluginFile()));
+            }else{
+            	source = new RemotePluginSource(commandLineArguments.getPluginShortname(), commandLineArguments.getPluginVersion());
+            }
             PluginInstaller installer = new PluginInstaller(
-                    new RemotePluginSource(commandLineArguments.getPluginShortname(), commandLineArguments.getPluginVersion()),
+                    source,
                     configuration,
-                    commandLineArguments.isForcePlugin()
-            );
-            
+                    commandLineArguments.isForcePlugin());
             installer.install();
             System.exit(0);
         }

@@ -124,8 +124,16 @@ public class CommandLineArguments {
         this.showHelp = showHelp;
     }
     
-    public boolean isInstallPlugin() {
-        return pluginShortname != null && !pluginShortname.isEmpty() && pluginFile != null && !pluginFile.isEmpty();
+    public boolean isInstallRemotePlugin() {
+        return pluginShortname != null && !pluginShortname.isEmpty();
+    }
+    
+    public boolean isInstallLocalPlugin(){
+    	return pluginFile != null && !pluginFile.isEmpty();
+    }
+    
+    public boolean isInstallPlugin(){
+    	return isInstallLocalPlugin() || isInstallRemotePlugin();
     }
     
     public String getPluginShortname() {

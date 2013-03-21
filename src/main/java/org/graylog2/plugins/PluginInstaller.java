@@ -85,7 +85,7 @@ public class PluginInstaller {
             }
             
             System.out.println("Fetching JAR: " + pluginInformation.jar);
-            File jarFile = new File(jarPath(pluginInformation, pluginInformation.getPluginTypeName()));
+            File jarFile = new File(jarPath(pluginInformation));
             source.fetchJar(pluginInformation, jarFile);
             System.out.println("Copied JAR to " + jarFile.getAbsolutePath());
             
@@ -95,7 +95,7 @@ public class PluginInstaller {
             System.out.println("Requested configuration: " + config);
             
             mongoBridge.writeSinglePluginInformation(
-                    PluginRegistry.buildStandardInformation(pluginInformation.shortname, pluginInformation.name, config),
+                    PluginRegistry.buildStandardInformation(plugin.getClassName(), pluginInformation.name, config),
                     pluginInformation.getRegistryName()
             );
             
@@ -114,9 +114,10 @@ public class PluginInstaller {
         return versions.contains(Core.GRAYLOG2_VERSION);
     }
     
-    public static String jarPath(PluginMetadata info, String jarUrl) {
-        try {
-            String path = "plugin/" + info.getPluginTypeName() + "/" + jarUrl.substring(jarUrl.lastIndexOf("/")+1);
+    public static String jarPath(PluginMetadata info) {
+    	try {
+    		String jarUrl = info.jar;
+        	String path = "plugin/" + info.getPluginTypeName() + "/" + jarUrl.substring(jarUrl.lastIndexOf("/")+1);
             
             // lol just to make sure...
             if (path.startsWith("/")) {
@@ -136,7 +137,7 @@ public class PluginInstaller {
             getClass().getClassLoader()
         );
 
-        Class<?> p = Class.forName(PluginLoader.getClassNameFromJarName(file.getName()), true, loader);
+        Class<?> p = Class.forName(PluginLoader.getClassNameFromJar(file), true, loader);
         String className = p.getCanonicalName();
         String name = "";
         Map<String, String> configuration =  Maps.newHashMap();

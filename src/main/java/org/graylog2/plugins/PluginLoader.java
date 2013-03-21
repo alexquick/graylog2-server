@@ -57,8 +57,8 @@ public class PluginLoader<A> {
                     new URL[] { jarPath.toURI().toURL() },
                     getClass().getClassLoader()
                 );
-
-                Class<?> clazz = Class.forName(getClassNameFromJarName(jarPath.getName()), true, loader);
+                String className = getClassNameFromJar(jarPath);
+                Class<?> clazz = Class.forName(className, true, loader);
                 plugins.add(clazz.asSubclass(type).newInstance());
             } catch (Exception ex) {
                 LOG.error("Could not load plugin <" + jarPath.getAbsolutePath() + ">", ex);
@@ -80,7 +80,22 @@ public class PluginLoader<A> {
         return Arrays.asList(dir.listFiles(new Graylog2PluginFileFilter()));
     }
     
-    public static String getClassNameFromJarName(String jar) throws InvalidJarNameException {
+    public static String getClassNameFromJar(File jar) throws InvalidJarNameException{
+    	//try first to get it from embedded resources file
+    	LocalPluginSource source = new LocalPluginSource(jar);
+    	if(source.hasMetadata()){
+    		try{
+    		PluginMetadata info = source.getPluginInformation();
+    		return info.class_name;
+    		}catch(PluginException e){
+    			LOG.warn("Found plugin.json for " + jar.getName() + " but got: ", e);
+    		}
+    	}
+    	//default to old name-based scheme
+    	return getClassNameFromJarName(jar.getName());
+    }
+    
+    private static String getClassNameFromJarName(String jar) throws InvalidJarNameException {
         try {
             return jar.split("_gl2plugin.jar")[0];
         } catch(Exception e) {

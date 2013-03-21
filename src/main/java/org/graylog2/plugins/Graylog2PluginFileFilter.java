@@ -29,7 +29,13 @@ public class Graylog2PluginFileFilter implements FilenameFilter {
 
     @Override
     public boolean accept(File file, String string) {
-        return string.endsWith("_gl2plugin.jar");
+    	if(!string.endsWith(".jar")){
+    		return false;
+    	}
+        return string.endsWith("_gl2plugin.jar") || hasMetadata(new File(file, string));
     }
     
+    private boolean hasMetadata(File jarFile){
+    	return new LocalPluginSource(jarFile).hasMetadata();
+    }   
 }

@@ -74,9 +74,9 @@ public class PluginInstaller {
         }
         
         try {
-            PluginMetadata pluginInformation = source.getPluginInformation();
 
-            System.out.println("Got plugin information from API.");
+            System.out.println("Looking up plugin information. ");
+            PluginMetadata pluginInformation = source.getPluginInformation();
 
             if (!force && !compatible(pluginInformation.compatible_versions)) {
                 System.out.println("Plugin is not officially compatible to this version "
